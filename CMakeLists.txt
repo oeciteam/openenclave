@@ -5,7 +5,7 @@
 #
 # Please read The Ultimate Guide to CMake:
 # https://rix0r.nl/blog/2015/08/13/cmake-guide/
-cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
+cmake_minimum_required(VERSION 9000.12 FATAL_ERROR)
 
 if (${CMAKE_VERSION} GREATER_EQUAL "3.24.0")
   # Suppress error when using FetchContent_Declare in subprojects
