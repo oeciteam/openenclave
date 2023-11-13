@@ -22,7 +22,7 @@ List<String> LIST_IGNORED_DIRS = [
     '^\\.jenkins/infrastructure',
     '^\\.jenkins/docker',
     '^\\.github',
-    '^\\.md\$',
+    '\\.md\$',
     '^VERSION\$',
     '^OWNERS\$'
 ]
@@ -119,65 +119,38 @@ pipeline {
                 }
             }
         }
-        stage("Compare changes") {
-            when {
-                expression { return params.FORCE_TEST == false }
-            }
+        stage('Determine changes') {
+            /* This stage is used to determine whether to skip the main testing stage
+               if the changes are only in ignored directories or files. 
+               This is only necessary for Jenkins multibranch pipeline builds.
+            */
             steps {
-                cleanWs()
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [
-                        [
-                            name: "origin/master"
-                        ],
-                        [
-                            name: "testremote/${GLOBAL_BRANCH_NAME}"
-                        ]
-                    ],
-                    doGenerateSubmoduleConfigurations: false,
-                    extensions: [
-                        [
-                            $class: 'PruneStaleBranch',
-                            $class: 'SubmoduleOption',
-                            disableSubmodules: true,
-                            recursiveSubmodules: false,
-                            trackingSubmodules: false
-                        ]
-                    ], 
-                    submoduleCfg: [],
-                    userRemoteConfigs: [
-                        [
-                            url: "https://github.com/cyandevs/openenclave.git",
-                            name: "origin",
-                            refspec: "+refs/heads/master:refs/remotes/origin/master",
-
-                        ],
-                        [
-                            url: "https://github.com/${REPOSITORY_NAME}.git",
-                            name: "testremote",
-                            refspec: "+refs/heads/${GLOBAL_BRANCH_NAME}:refs/remotes/testremote/${GLOBAL_BRANCH_NAME}"
-                        ]
-                    ]
-                ])
                 script {
-                    String continue_build = null
-                    // Check if git diff vs origin/master contains changes outside of ignored directories
-                    gitChanges = sh (
-                        script: """#!/bin/bash
-                                git diff --name-only testremote/${GLOBAL_BRANCH_NAME} origin/master | grep --invert-match --extended-regexp \'${IGNORED_DIRS_REGEX}\'  --no-messages || [[ \$? == 1 ]]
-                                """,
-                        returnStdout: true,
-                    ).trim()
-                    // Skip build with a success if gitChanges is defined and empty (no changes outside of ignored directories).
-                    // Note: this step must be ran outside of a stage in order to exit the entire build.
-                    if (gitChanges != null && gitChanges == '') {
-                        println("No significant changes detected. Testing is not necessary.")
-                        continue_build = false
-                    } else {
-                        println("Detected the follow file changes: " + gitChanges)
-                        continue_build = true
-                    }
+                    dir("${WORKSPACE}") {
+                        if ( params.PULL_REQUEST_ID ) {
+                            // This is the git ref for a manual PR build
+                            SOURCE_BRANCH = "origin/pr/${params.PULL_REQUEST_ID}"
+                        } else if ( params.BRANCH != "main" ) {
+                            // This is the git ref for a manual branch build
+                            SOURCE_BRANCH = "origin/${params.BRANCH}"
+                        } else {
+                            // This is the git ref in a Jenkins multibranch pipeline build
+                            SOURCE_BRANCH = "origin/PR-${env.CHANGE_ID}"
+                        }
+                        CHANGED_FILES = sh(
+                            returnStdout: true,
+                            script: """
+                                git diff --name-only \$(git merge-base origin/master ${SOURCE_BRANCH})..${SOURCE_BRANCH} \
+                                | grep --invert-match --extended-regexp \'${IGNORED_DIRS_REGEX}\'  --no-messages || [[ \$? == 1 ]]
+                                """
+                        )
+                        if ( CHANGED_FILES == '' ) {
+                            println("No significant changes detected. Testing is not necessary.")
+                            continue_build = false
+                        } else {
+                            println("Detected the follow file changes: " + CHANGED_FILES)
+                            continue_build = true
+                        }
                 }
             }
         }
