@@ -72,7 +72,7 @@ pipeline {
         buildDiscarder(logRotator(artifactDaysToKeepStr: '90', artifactNumToKeepStr: '180', daysToKeepStr: '90', numToKeepStr: '180'))
     }
     parameters {
-        string(name: 'REPOSITORY_NAME', defaultValue: 'openenclave/openenclave', description: 'GitHub repository to checkout', trim: true)
+        string(name: 'REPOSITORY_NAME', defaultValue: 'cyandevs/openenclave', description: 'GitHub repository to checkout', trim: true)
         string(name: 'BRANCH', defaultValue: 'master', description: 'The branch used to checkout the repository', trim: true)
         booleanParam(name: 'FULL_TEST_SUITE', defaultValue: false, description: 'Run all tests')
         booleanParam(name: 'FORCE_TEST', defaultValue: false, description: 'Force tests to continue even if there are no changes compared to master')
@@ -101,7 +101,7 @@ pipeline {
                 }
                 script {
                     PR_AUTHOR = sh(
-                        script: "curl --silent https://api.github.com/repos/openenclave/openenclave/pulls/${env.CHANGE_ID} | jq --raw-output '.user | .login'",
+                        script: "curl --silent https://api.github.com/repos/cyandevs/openenclave/pulls/${env.CHANGE_ID} | jq --raw-output '.user | .login'",
                         returnStdout: true
                     ).trim()
                     if ( PR_AUTHOR == 'null' ) {
@@ -147,7 +147,7 @@ pipeline {
                     submoduleCfg: [],
                     userRemoteConfigs: [
                         [
-                            url: "https://github.com/openenclave/openenclave.git",
+                            url: "https://github.com/cyandevs/openenclave.git",
                             name: "origin",
                             refspec: "+refs/heads/master:refs/remotes/origin/master",
 
