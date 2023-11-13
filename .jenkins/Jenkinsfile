@@ -112,7 +112,7 @@ pipeline {
                         currentBuild.result = 'ABORTED'
                         error("Pull request author ${PR_AUTHOR} is not in the list of authorized users. Aborting build.")
                     } else {
-                        println("Pull request author ${PR_AUTHOR} is whitelisted. Build will continue.")
+                        println("Pull request author ${PR_AUTHOR} is authorized. Build will continue.")
                     }
                     // Set pull request ID for standalone builds
                     PULL_REQUEST_ID = CHANGE_ID
@@ -141,7 +141,7 @@ pipeline {
                             returnStdout: true,
                             script: """
                                 git diff --name-only \$(git merge-base origin/master ${SOURCE_BRANCH})..${SOURCE_BRANCH} \
-                                | grep --invert-match --extended-regexp \'${IGNORED_DIRS_REGEX}\'  --no-messages || [[ \$? == 1 ]]
+                                | grep --invert-match --extended-regexp \'${IGNORED_DIRS_REGEX}\'  --no-messages || test \$? = 1
                                 """
                         )
                         if ( CHANGED_FILES == '' ) {
