@@ -1,25 +1,67 @@
 // Copyright (c) Open Enclave SDK contributors.
 // Licensed under the MIT License.
 
-// Check if BRANCH is specified by multibranch pipeline job
-GLOBAL_BRANCH_NAME = env.BRANCH_NAME ?: params.BRANCH
-
-// Regex that includes directory you want to ignore for CI builds.
-String IGNORED_DIRS = "^docs|^\\.jenkins/infrastructure|\\.md\$|^VERSION\$|^OWNERS\$"
-
-// Load OpenEnclaveJenkinsLibrary version to use in this priority:
-//     1. If this is a bors run, use the bors branch
-//     2. Use params.OECI_LIB_VERSION if it is specified
-//     3. If none of the above, default to master
-if ( REPOSITORY_NAME == 'openenclave/openenclave' && GLOBAL_BRANCH_NAME ==~ /^(trying|staging)$/ ) {
-    GLOBAL_OECI_LIB_VERSION = GLOBAL_BRANCH_NAME
-} else if ( params.OECI_LIB_VERSION ) {
-    // Use regex to match bors branches to include any changes to OpenEnclaveJenkinsLibrary
-    GLOBAL_OECI_LIB_VERSION = params.OECI_LIB_VERSION
+/* Prevent Branch Indexing from triggering a build. This is necessary because
+   Branch Indexing will trigger a build for every Pull Request in the repository
+   every time it occurs and waste resources.
+*/
+build_cause = currentBuild.getBuildCauses().toString()
+if (build_cause.contains('BranchIndexingCause')) {
+  currentBuild.result = 'ABORTED'
+  error("Branch Indexing is not allowed. Please trigger manually or via a pull request.")
 } else {
-    GLOBAL_OECI_LIB_VERSION = "master"
+  println("Build cause: ${build_cause}")
 }
-library "OpenEnclaveJenkinsLibrary@${GLOBAL_OECI_LIB_VERSION}"
+
+/* A list of regex that includes directories and files to be ignored for CI builds.
+  This is used as a grep extended regular expression.
+  See https://www.gnu.org/software/grep/manual/html_node/Basic-vs-Extended.html
+*/
+List<String> LIST_IGNORED_DIRS = [
+    '^docs',
+    '^\\.jenkins/infrastructure',
+    '^\\.jenkins/docker',
+    '^\\.github',
+    '^\\.md\$',
+    '^VERSION\$',
+    '^OWNERS\$'
+]
+
+// This joins list into regex string to be used in git diff
+String IGNORED_DIRS_REGEX = LIST_IGNORED_DIRS.join('\|')
+
+List<String> APPROVED_AUTHORS = [
+    'achamayou',
+    'AevaOnline',
+    'anche-is-andy'
+    'gupta-ak',
+    'anakrish',
+    'asvrada',
+    'Britel',
+    'CyanDevs',
+    'dcarpente',
+    'dthaler',
+    'HernanGatta',
+    'jiria',
+    'jazzybluesea',
+    'justanotherminh',
+    'jxyang',
+    'mikbras',
+    'mingweishih',
+    'paulcallen',
+    'radhikaj',
+    'salsal97',
+    'shnwc',
+    'shruti25ratnam',
+    'soccerGB',
+    'vtikoo',
+    'yentsanglee'
+]
+
+/* Check if BRANCH is specified by multibranch pipeline job
+   env.BRANCH_NAME is only set when a build is triggered by a multibranch pipeline job.
+*/
+GLOBAL_BRANCH_NAME = env.BRANCH_NAME ?: params.BRANCH
 
 pipeline {
     agent any
@@ -36,6 +78,44 @@ pipeline {
         string(name: "OECI_LIB_VERSION", defaultValue: 'master', description: 'Version of OE Libraries to use', trim: true)
     }
     stages {
+        stage('Check access') {
+            when {
+                /* This checks access when a build is ran in a multibranch pipeline job and is triggered
+                   when GitHub pull request is created or updated with a new or (forced) different commit.
+                   This stage is skipped if a build is triggered manually.
+                */
+                allOf {
+                    expression { params.PULL_REQUEST_ID == "" }
+                    // env.CHANGE_ID is only set when a build is triggered by a multibranch pipeline job.
+                    expression { env.CHANGE_ID != null && env.CHANGE_ID.isInteger() }
+                }
+            }
+            steps {
+                retry(5) {
+                    sh """
+                        while sudo lsof /var/lib/dpkg/lock-frontend | grep dpkg; do sleep 3; done
+                        sudo apt-get -y --option Acquire::Retries=5 install jq
+                    """
+                }
+                script {
+                    PR_AUTHOR = sh(
+                        script: "curl --silent https://api.github.com/repos/openenclave/openenclave/pulls/${env.CHANGE_ID} | jq --raw-output '.user | .login'",
+                        returnStdout: true
+                    ).trim()
+                    if ( PR_AUTHOR == 'null' ) {
+                        error("No pull request author found. This is an unexpected error. Does the pull request ID exist?")
+                    }
+                    if ( ! APPROVED_AUTHORS.contains(PR_AUTHOR) ) {
+                        currentBuild.result = 'ABORTED'
+                        error("Pull request author ${PR_AUTHOR} is not in the list of authorized users. Aborting build.")
+                    } else {
+                        println("Pull request author ${PR_AUTHOR} is whitelisted. Build will continue.")
+                    }
+                    // Set pull request ID for standalone builds
+                    PULL_REQUEST_ID = CHANGE_ID
+                }
+            }
+        }
         stage("Compare changes") {
             when {
                 expression { return params.FORCE_TEST == false }
@@ -81,10 +161,11 @@ pipeline {
                     ]
                 ])
                 script {
+                    String continue_build = null
                     // Check if git diff vs origin/master contains changes outside of ignored directories
                     gitChanges = sh (
                         script: """#!/bin/bash
-                                git diff --name-only testremote/${GLOBAL_BRANCH_NAME} origin/master | grep --invert-match --extended-regexp \'${IGNORED_DIRS}\'  --no-messages || [[ \$? == 1 ]]
+                                git diff --name-only testremote/${GLOBAL_BRANCH_NAME} origin/master | grep --invert-match --extended-regexp \'${IGNORED_DIRS_REGEX}\'  --no-messages || [[ \$? == 1 ]]
                                 """,
                         returnStdout: true,
                     ).trim()
@@ -115,7 +196,7 @@ pipeline {
                                 string(name: 'BRANCH_NAME', value: GLOBAL_BRANCH_NAME),
                                 string(name: 'DOCKER_TAG', value: params.DOCKER_TAG),
                                 string(name: 'UBUNTU_NONSGX_CUSTOM_LABEL', value: globalvars.AGENTS_LABELS["ubuntu-nonsgx"]),
-                                string(name: 'OECI_LIB_VERSION', value: GLOBAL_OECI_LIB_VERSION),
+                                string(name: 'OECI_LIB_VERSION', value: params.OECI_LIB_VERSION),
                                 booleanParam(name: 'FULL_TEST_SUITE', value: params.FULL_TEST_SUITE)
                             ]
                     }
@@ -130,7 +211,7 @@ pipeline {
                                 string(name: 'UBUNTU_2004_CUSTOM_LABEL', value: globalvars.AGENTS_LABELS["acc-ubuntu-20.04"]),
                                 string(name: 'UBUNTU_NONSGX_CUSTOM_LABEL', value: globalvars.AGENTS_LABELS["ubuntu-nonsgx"]),
                                 string(name: 'WS2019_NONSGX_CUSTOM_LABEL', value: globalvars.AGENTS_LABELS["ws2019-nonsgx"]),
-                                string(name: 'OECI_LIB_VERSION', value: GLOBAL_OECI_LIB_VERSION),
+                                string(name: 'OECI_LIB_VERSION', value: params.OECI_LIB_VERSION),
                                 booleanParam(name: 'FULL_TEST_SUITE', value: params.FULL_TEST_SUITE)
                             ]
                     }
@@ -147,7 +228,7 @@ pipeline {
                                 string(name: 'WS2019_DCAP_ICX_LABEL', value: globalvars.AGENTS_LABELS["acc-v3-win2019-dcap"]),
                                 string(name: 'WS2022_DCAP_CFL_LABEL', value: globalvars.AGENTS_LABELS["acc-win2022-dcap"]),
                                 string(name: 'WS2022_DCAP_ICX_LABEL', value: globalvars.AGENTS_LABELS["acc-v3-win2022-dcap"]),
-                                string(name: 'OECI_LIB_VERSION', value: GLOBAL_OECI_LIB_VERSION),
+                                string(name: 'OECI_LIB_VERSION', value: params.OECI_LIB_VERSION),
                                 booleanParam(name: 'FULL_TEST_SUITE', value: params.FULL_TEST_SUITE)
                             ]
                     }
