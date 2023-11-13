@@ -28,7 +28,7 @@ List<String> LIST_IGNORED_DIRS = [
 ]
 
 // This joins list into regex string to be used in git diff
-String IGNORED_DIRS_REGEX = LIST_IGNORED_DIRS.join('\|')
+String IGNORED_DIRS_REGEX = LIST_IGNORED_DIRS.join('\\|')
 
 List<String> APPROVED_AUTHORS = [
     'achamayou',
