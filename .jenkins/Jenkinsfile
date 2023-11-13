@@ -151,6 +151,7 @@ pipeline {
                             println("Detected the follow file changes: " + CHANGED_FILES)
                             continue_build = true
                         }
+                    }
                 }
             }
         }
