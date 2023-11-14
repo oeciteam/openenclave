@@ -63,8 +63,6 @@ List<String> APPROVED_AUTHORS = [
 */
 GLOBAL_BRANCH_NAME = env.BRANCH_NAME ?: params.BRANCH
 
-library "OpenEnclaveJenkinsLibrary@${params.OECI_LIB_VERSION}"
-
 pipeline {
     agent any
     options {
@@ -152,6 +150,18 @@ pipeline {
                             continue_build = true
                         }
                     }
+                }
+            }
+        }
+        stage('Load library') {
+            when {
+                expression {
+                    return continue_build
+                }
+            }
+            steps {
+                script {
+                    library "OpenEnclaveJenkinsLibrary@${params.OECI_LIB_VERSION}"
                 }
             }
         }
