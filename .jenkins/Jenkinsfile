@@ -19,16 +19,16 @@ if (build_cause.contains('BranchIndexingCause')) {
 */
 List<String> LIST_IGNORED_DIRS = [
     '^docs',
-    '^\\.jenkins/infrastructure',
-    '^\\.jenkins/docker',
-    '^\\.github',
-    '\\.md\$',
+    '^.jenkins/infrastructure',
+    '^.jenkins/docker',
+    '^.github',
+    '.md\$',
     '^VERSION\$',
     '^OWNERS\$'
 ]
 
 // This joins list into regex string to be used in git diff
-String IGNORED_DIRS_REGEX = LIST_IGNORED_DIRS.join('\\|')
+String IGNORED_DIRS_REGEX = LIST_IGNORED_DIRS.join('|')
 
 List<String> APPROVED_AUTHORS = [
     'achamayou',
