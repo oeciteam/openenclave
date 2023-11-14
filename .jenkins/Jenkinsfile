@@ -130,7 +130,7 @@ pipeline {
                         if ( params.PULL_REQUEST_ID ) {
                             // This is the git ref for a manual PR build
                             SOURCE_BRANCH = "origin/pr/${params.PULL_REQUEST_ID}"
-                        } else if ( params.BRANCH != "main" ) {
+                        } else if ( params.BRANCH != "master" ) {
                             // This is the git ref for a manual branch build
                             SOURCE_BRANCH = "origin/${params.BRANCH}"
                         } else {
